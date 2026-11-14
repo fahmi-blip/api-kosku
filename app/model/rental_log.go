@@ -14,3 +14,14 @@ type RentalStatusLog struct {
 	Actor  User   `gorm:"foreignKey:ActorID" json:"actor,omitempty"`
 	Rental Rental `gorm:"foreignKey:RentalID" json:"-"`
 }
+
+type RentalLogResponse struct {
+	ID         uint      `json:"id"`
+	RentalID   uint      `json:"rental_id"`
+	ActorID    uint      `json:"actor_id"`
+	ActorName  string    `json:"actor_name,omitempty"`
+	FromStatus string    `json:"from_status"`
+	ToStatus   string    `json:"to_status"`
+	Note       string    `json:"note"`
+	CreatedAt  time.Time `json:"created_at"`
+}
