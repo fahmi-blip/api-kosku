@@ -21,3 +21,21 @@ type Rental struct {
 	User User `gorm:"foreignKey:UserID" json:"user,omitempty"`
 	Room Room `gorm:"foreignKey:RoomID" json:"room,omitempty"`
 }
+
+type RentalRequest struct {
+	RoomID         uint   `json:"room_id"`
+	StartDate      string `json:"start_date"`
+	DurationMonths int    `json:"duration_months"`
+}
+
+type RentalResponse struct {
+	ID             uint          `json:"id"`
+	UserID         uint          `json:"user_id"`
+	RoomID         uint          `json:"room_id"`
+	StartDate      string        `json:"start_date"`
+	DurationMonths int           `json:"duration_months"`
+	Status         string        `json:"status"`
+	CreatedAt      time.Time     `json:"created_at"`
+	User           *UserResponse `json:"user,omitempty"`
+	Room           *RoomResponse `json:"room,omitempty"`
+}
