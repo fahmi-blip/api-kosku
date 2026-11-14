@@ -18,3 +18,22 @@ type Room struct {
 	CreatedAt     time.Time `json:"created_at"`
 	Rentals       []Rental  `gorm:"foreignKey:RoomID" json:"rentals,omitempty"`
 }
+
+type RoomRequest struct {
+	Code          string  `json:"code"`
+	Name          string  `json:"name"`
+	PricePerMonth float64 `json:"price_per_month"`
+	Facilities    string  `json:"facilities"`
+	Status        string  `json:"status"`
+}
+
+type RoomResponse struct {
+	ID            uint      `json:"id"`
+	Code          string    `json:"code"`
+	Name          string    `json:"name"`
+	PricePerMonth float64   `json:"price_per_month"`
+	Facilities    string    `json:"facilities"`
+	Status        string    `json:"status"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
