@@ -41,3 +41,36 @@ func corsPolicy(allowedOrigins string) func(*fiber.Ctx) error {
 		AllowHeaders: "Origin,Content-Type,Accept,Authorization",
 	})
 }
+
+func RequestLogger(logger Logger) func(*fiber.Ctx) error {
+	return func(c *fiber.Ctx) error {
+		start := time.Now()
+
+		err := c.Next()
+
+		requestID, _ := c.Locals("requestid").(string)
+		status := c.Response().StatusCode()
+		if err != nil {
+			var appErr *helper.AppError
+			if errors.As(err, &appErr) {
+				status = appErr.Status
+			} else {
+				status = fiber.StatusInternalServerError
+			}
+		}
+
+		duration := time.Since(start)
+		msg := "method=" + c.Method() + " path=" + c.Path() + " status=" + strconv.Itoa(status) + " ip=" + c.IP() + " req_id=" + requestID + " duration=" + duration.String()
+		if user, ok := helper.CurrentUser(c); ok {
+			msg += " role=" + user.Role
+		}
+
+		if status >= fiber.StatusInternalServerError {
+			logger.Error("HTTP request: %s", msg)
+		} else {
+			logger.Info("HTTP request: %s", msg)
+		}
+
+		return err
+	}
+}
