@@ -36,3 +36,22 @@ func RequireAuth(jwtManager *helper.JWTManager) func(*fiber.Ctx) error {
 	}
 }
 
+func bearerToken(c *fiber.Ctx) (string, error) {
+	header := c.Get(fiber.HeaderAuthorization)
+	if header == "" {
+		return "", errors.New("header kosong")
+	}
+
+	parts := strings.SplitN(header, " ", 2)
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+		return "", errors.New("format bukan Bearer")
+	}
+
+	token := strings.TrimSpace(parts[1])
+	if token == "" {
+		return "", errors.New("token kosong")
+	}
+	return token, nil
+}
+
+
