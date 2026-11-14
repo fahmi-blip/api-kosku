@@ -54,4 +54,17 @@ func bearerToken(c *fiber.Ctx) (string, error) {
 	return token, nil
 }
 
+func LoginRateLimiter() func(*fiber.Ctx) error {
+	return limiter.New(limiter.Config{
+		Max:        5,
+		Expiration: 1 * time.Minute,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			return c.IP()
+		},
+		LimitReached: func(c *fiber.Ctx) error {
+			c.Set("Retry-After", "60")
+			return helper.TooManyRequests("terlalu banyak percobaan login, coba lagi dalam satu menit")
+		},
+	})
+}
 
