@@ -74,3 +74,20 @@ func RequestLogger(logger Logger) func(*fiber.Ctx) error {
 		return err
 	}
 }
+
+var bodyMethods = map[string]bool{
+	fiber.MethodPost:  true,
+	fiber.MethodPut:   true,
+	fiber.MethodPatch: true,
+}
+
+func RequireJSON(c *fiber.Ctx) error {
+	if bodyMethods[c.Method()] {
+		ct := c.Get("Content-Type")
+		if !strings.HasPrefix(ct, fiber.MIMEApplicationJSON) {
+			return helper.UnsupportedMediaType("Content-Type harus application/json")
+		}
+	}
+	return c.Next()
+}
+
