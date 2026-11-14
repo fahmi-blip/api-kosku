@@ -22,4 +22,12 @@ func Register(app *fiber.App, deps Dependencies) {
 	api.Get("/health", func(c *fiber.Ctx) error {
 		return helper.Ok(c, fiber.StatusOK, "server berjalan", nil)
 	})
+
+	// --- Auth ---
+	auth := api.Group("/auth")
+	auth.Post("/register", middleware.RequireJSON, deps.AuthService.Register)
+	auth.Post("/login", middleware.RequireJSON, middleware.LoginRateLimiter(), deps.AuthService.Login)
+	auth.Post("/refresh", middleware.RequireJSON, deps.AuthService.Refresh)
+	auth.Post("/logout", middleware.RequireAuth(deps.JWT), deps.AuthService.Logout)
+	auth.Get("/me", middleware.RequireAuth(deps.JWT), deps.AuthService.Me)
 }
