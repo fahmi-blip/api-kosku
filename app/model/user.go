@@ -17,3 +17,15 @@ type User struct {
 	CreatedAt    time.Time `json:"created_at"`
 	Rentals      []Rental  `gorm:"foreignKey:UserID" json:"rentals,omitempty"`
 }
+
+type RegisterRequest struct {
+	Name     string `json:"name"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
+	Phone    string `json:"phone"`
+}
+
+type LoginRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
