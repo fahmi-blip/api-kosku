@@ -15,3 +15,11 @@ type Dependencies struct {
 	RoomService   service.RoomService
 	RentalService service.RentalService
 }
+
+func Register(app *fiber.App, deps Dependencies) {
+	api := app.Group("/api/v1")
+
+	api.Get("/health", func(c *fiber.Ctx) error {
+		return helper.Ok(c, fiber.StatusOK, "server berjalan", nil)
+	})
+}
