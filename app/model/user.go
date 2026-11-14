@@ -50,3 +50,21 @@ type RefreshToken struct {
 	CreatedAt time.Time  `gorm:"autoCreateTime" json:"created_at"`
 }
 
+type UserResponse struct {
+	ID    uint   `json:"id"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
+	Phone string `json:"phone"`
+	Role  string `json:"role"`
+}
+
+type AuthUser struct {
+	UserID uint   `json:"user_id"`
+	Email  string `json:"email"`
+	Role   string `json:"role"`
+}
+
+type AuthResponse struct {
+	Token TokenPair    `json:"token"`
+	User  UserResponse `json:"user"`
+}
