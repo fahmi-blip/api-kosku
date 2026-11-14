@@ -39,4 +39,13 @@ func Register(app *fiber.App, deps Dependencies) {
 	rooms.Post("/", middleware.RequireJSON, middleware.RequireAuth(deps.JWT), middleware.RequirePermission(deps.Permissions, "room:create"), deps.RoomService.Create)
 	rooms.Put("/:id", middleware.RequireJSON, middleware.RequireAuth(deps.JWT), middleware.RequirePermission(deps.Permissions, "room:update"), deps.RoomService.Update)
 	rooms.Delete("/:id", middleware.RequireAuth(deps.JWT), middleware.RequirePermission(deps.Permissions, "room:delete"), deps.RoomService.Delete)
+
+	// --- Rentals ---
+	rentals := api.Group("/rentals", middleware.RequireAuth(deps.JWT))
+	rentals.Post("/", middleware.RequireJSON, middleware.RequirePermission(deps.Permissions, "rental:apply"), deps.RentalService.Apply)
+	rentals.Get("/", middleware.RequirePermission(deps.Permissions, "rental:read"), deps.RentalService.GetAll)
+	rentals.Get("/:id/logs", middleware.RequirePermission(deps.Permissions, "rental:read"), deps.RentalService.GetLogs)
+	rentals.Patch("/:id/approve", middleware.RequirePermission(deps.Permissions, "rental:approve"), deps.RentalService.Approve)
+	rentals.Patch("/:id/reject", middleware.RequirePermission(deps.Permissions, "rental:reject"), deps.RentalService.Reject)
+	rentals.Patch("/:id/cancel", middleware.RequirePermission(deps.Permissions, "rental:cancel"), deps.RentalService.Cancel)
 }
