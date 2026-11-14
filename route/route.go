@@ -30,4 +30,13 @@ func Register(app *fiber.App, deps Dependencies) {
 	auth.Post("/refresh", middleware.RequireJSON, deps.AuthService.Refresh)
 	auth.Post("/logout", middleware.RequireAuth(deps.JWT), deps.AuthService.Logout)
 	auth.Get("/me", middleware.RequireAuth(deps.JWT), deps.AuthService.Me)
+
+	// --- Rooms ---
+	rooms := api.Group("/rooms")
+	rooms.Get("/", deps.RoomService.GetAll)
+	rooms.Get("/available", deps.RoomService.GetAvailable)
+	rooms.Get("/:id", middleware.RequireAuth(deps.JWT), middleware.RequirePermission(deps.Permissions, "room:read"), deps.RoomService.GetByID)
+	rooms.Post("/", middleware.RequireJSON, middleware.RequireAuth(deps.JWT), middleware.RequirePermission(deps.Permissions, "room:create"), deps.RoomService.Create)
+	rooms.Put("/:id", middleware.RequireJSON, middleware.RequireAuth(deps.JWT), middleware.RequirePermission(deps.Permissions, "room:update"), deps.RoomService.Update)
+	rooms.Delete("/:id", middleware.RequireAuth(deps.JWT), middleware.RequirePermission(deps.Permissions, "room:delete"), deps.RoomService.Delete)
 }
