@@ -230,3 +230,48 @@ func (s *rentalService) GetLogs(c *fiber.Ctx) error {
 	}
 	return helper.Success(c, fiber.StatusOK, "Berhasil mengambil log sewa", resp)
 }
+
+func (s *rentalService) Approve(c *fiber.Ctx) error {
+	role := getRole(c)
+	if role != model.RolePemilik {
+		return helper.Error(c, fiber.StatusForbidden, "Hanya pemilik yang dapat menyetujui pengajuan sewa")
+	}
+
+	idParam := c.Params("id")
+	id, err := strconv.ParseUint(idParam, 10, 32)
+	if err != nil {
+		return helper.Error(c, fiber.StatusBadRequest, "ID sewa tidak valid")
+	}
+
+	rental, err := s.rentalRepo.FindByID(uint(id))
+	if err != nil {
+		return helper.Error(c, fiber.StatusNotFound, "Pengajuan sewa tidak ditemukan")
+	}
+
+	if rental.Status != model.StatusPending {
+		return helper.Error(c, fiber.StatusBadRequest, "Pengajuan sewa harus berstatus pending")
+	}
+
+	room, err := s.roomRepo.FindByID(rental.RoomID)
+	if err != nil {
+		return helper.Error(c, fiber.StatusNotFound, "Kamar tidak ditemukan")
+	}
+
+	if room.Status != model.RoomAvailable {
+		return helper.Error(c, fiber.StatusBadRequest, "Kamar sudah tidak berstatus available")
+	}
+
+	hasApproved, err := s.rentalRepo.ExistsApprovedByRoom(rental.RoomID)
+	if err != nil {
+		return helper.Error(c, fiber.StatusInternalServerError, "Gagal memeriksa status sewa kamar")
+	}
+	if hasApproved {
+		return helper.Error(c, fiber.StatusConflict, "Kamar sudah memiliki sewa yang disetujui")
+	}
+
+	if err := s.rentalRepo.ApproveTx(rental.ID, rental.RoomID, getUserID(c)); err != nil {
+		return helper.Error(c, fiber.StatusInternalServerError, "Gagal menyetujui sewa kamar")
+	}
+
+	return helper.Success(c, fiber.StatusOK, "Pengajuan sewa berhasil disetujui", nil)
+}
