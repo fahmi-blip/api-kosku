@@ -130,6 +130,43 @@ func (s *authService) Login(c *fiber.Ctx) error {
 	return helper.Success(c, fiber.StatusOK, "Login berhasil", resp)
 }
 
+func (s *authService) Refresh(c *fiber.Ctx) error {
+	var req model.RefreshRequest
+	if err := c.BodyParser(&req); err != nil || strings.TrimSpace(req.RefreshToken) == "" {
+		return helper.Error(c, fiber.StatusBadRequest, "refresh_token wajib diisi")
+	}
+
+	hash := helper.SHA256Hex(strings.TrimSpace(req.RefreshToken))
+
+	stored, err := s.tokenRepo.FindByHash(hash)
+	if err != nil || stored == nil {
+		return helper.Error(c, fiber.StatusUnauthorized, "Refresh token tidak valid")
+	}
+
+	if stored.RevokedAt != nil {
+		_ = s.tokenRepo.RevokeAllByUser(stored.UserID)
+		return helper.Error(c, fiber.StatusUnauthorized, "Token sudah dicabut — semua sesi dihentikan")
+	}
+
+	if stored.ExpiresAt.Before(time.Now()) {
+		return helper.Error(c, fiber.StatusUnauthorized, "Refresh token kedaluwarsa")
+	}
+
+	_ = s.tokenRepo.RevokeByHash(hash)
+
+	user, err := s.userRepo.FindByID(stored.UserID)
+	if err != nil || user == nil {
+		return helper.Error(c, fiber.StatusUnauthorized, "Pengguna tidak ditemukan")
+	}
+
+	pair, err := s.issueTokenPair(user)
+	if err != nil {
+		return helper.Error(c, fiber.StatusInternalServerError, "Gagal membuat token baru")
+	}
+
+	return helper.Success(c, fiber.StatusOK, "Token berhasil diperbarui", pair)
+}
+
 func (s *authService) issueTokenPair(user *model.User) (*model.TokenPair, error) {
 	access, err := s.jwtManager.GenerateAccess(*user)
 	if err != nil {
