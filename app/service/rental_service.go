@@ -1,6 +1,7 @@
 package service
 
 import (
+	"strconv"
 	"time"
 
 	"kosku-api/app/model"
@@ -194,4 +195,38 @@ func (s *rentalService) GetAll(c *fiber.Ctx) error {
 	}
 
 	return helper.Success(c, fiber.StatusOK, "Berhasil mengambil data sewa", resp)
+}
+
+func (s *rentalService) GetLogs(c *fiber.Ctx) error {
+	id, err := strconv.ParseUint(c.Params("id"), 10, 32)
+	if err != nil || id == 0 {
+		return helper.Error(c, fiber.StatusBadRequest, "ID sewa tidak valid")
+	}
+
+	rental, err := s.rentalRepo.FindByID(uint(id))
+	if err != nil {
+		return helper.Error(c, fiber.StatusNotFound, "Pengajuan sewa tidak ditemukan")
+	}
+	userID := getUserID(c)
+	if getRole(c) == model.RolePenghuni && rental.UserID != userID {
+		return helper.Error(c, fiber.StatusForbidden, "Anda tidak dapat melihat log sewa pengguna lain")
+	}
+
+	logs, err := s.rentalRepo.FindLogsByRentalID(uint(id))
+	if err != nil {
+		return helper.Error(c, fiber.StatusInternalServerError, "Gagal mengambil log sewa")
+	}
+	resp := make([]model.RentalLogResponse, 0, len(logs))
+	for _, entry := range logs {
+		item := model.RentalLogResponse{
+			ID: entry.ID, RentalID: entry.RentalID, ActorID: entry.ActorID,
+			FromStatus: entry.FromStatus, ToStatus: entry.ToStatus,
+			Note: entry.Note, CreatedAt: entry.CreatedAt,
+		}
+		if entry.Actor.ID != 0 {
+			item.ActorName = entry.Actor.Name
+		}
+		resp = append(resp, item)
+	}
+	return helper.Success(c, fiber.StatusOK, "Berhasil mengambil log sewa", resp)
 }
