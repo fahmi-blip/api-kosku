@@ -90,3 +90,38 @@ func (s *authService) Register(c *fiber.Ctx) error {
 	return helper.Success(c, fiber.StatusCreated, "Registrasi berhasil", resp)
 }
 
+func (s *authService) Login(c *fiber.Ctx) error {
+	var req model.LoginRequest
+	if err := c.BodyParser(&req); err != nil {
+		return helper.Error(c, fiber.StatusBadRequest, "Format request tidak valid")
+	}
+
+	req.Email = strings.TrimSpace(strings.ToLower(req.Email))
+	if req.Email == "" || req.Password == "" {
+		return helper.Error(c, fiber.StatusBadRequest, "Email dan password wajib diisi")
+	}
+
+	user, err := s.userRepo.FindByEmail(req.Email)
+	if err != nil {
+		helper.VerifyDummyPassword(req.Password)
+		return helper.Error(c, fiber.StatusUnauthorized, "Email atau password salah")
+	}
+
+	if !helper.CheckPassword(req.Password, user.PasswordHash) {
+		return helper.Error(c, fiber.StatusUnauthorized, "Email atau password salah")
+	}
+
+	
+
+	resp := model.AuthResponse{
+		User: model.UserResponse{
+			ID:    user.ID,
+			Name:  user.Name,
+			Email: user.Email,
+			Phone: user.Phone,
+			Role:  user.Role,
+		},
+	}
+
+	return helper.Success(c, fiber.StatusOK, "Login berhasil", resp)
+}
