@@ -216,3 +216,26 @@ func (s *roomService) Update(c *fiber.Ctx) error {
 
 	return helper.Success(c, fiber.StatusOK, "Kamar berhasil diperbarui", resp)
 }
+
+func (s *roomService) Delete(c *fiber.Ctx) error {
+	idParam := c.Params("id")
+	id, err := strconv.ParseUint(idParam, 10, 32)
+	if err != nil {
+		return helper.Error(c, fiber.StatusBadRequest, "ID kamar tidak valid")
+	}
+
+	room, err := s.roomRepo.FindByID(uint(id))
+	if err != nil {
+		return helper.Error(c, fiber.StatusNotFound, "Kamar tidak ditemukan")
+	}
+
+	if room.Status == model.RoomOccupied {
+		return helper.Error(c, fiber.StatusBadRequest, "Kamar berstatus occupied tidak boleh dihapus")
+	}
+
+	if err := s.roomRepo.Delete(uint(id)); err != nil {
+		return helper.Error(c, fiber.StatusInternalServerError, "Gagal menghapus kamar")
+	}
+
+	return helper.Success(c, fiber.StatusOK, "Kamar berhasil dihapus", nil)
+}
