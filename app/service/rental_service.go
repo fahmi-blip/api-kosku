@@ -25,6 +25,12 @@ type rentalService struct {
 	roomRepo   repository.RoomRepository
 }
 
+func NewRentalService(rentalRepo repository.RentalRepository, roomRepo repository.RoomRepository) RentalService {
+	return &rentalService{
+		rentalRepo: rentalRepo,
+		roomRepo:   roomRepo,
+	}
+}
 
 func getUserID(c *fiber.Ctx) uint {
 	if user, ok := helper.CurrentUser(c); ok {
