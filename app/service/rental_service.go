@@ -275,3 +275,31 @@ func (s *rentalService) Approve(c *fiber.Ctx) error {
 
 	return helper.Success(c, fiber.StatusOK, "Pengajuan sewa berhasil disetujui", nil)
 }
+
+func (s *rentalService) Reject(c *fiber.Ctx) error {
+	role := getRole(c)
+	if role != model.RolePemilik {
+		return helper.Error(c, fiber.StatusForbidden, "Hanya pemilik yang dapat menolak pengajuan sewa")
+	}
+
+	idParam := c.Params("id")
+	id, err := strconv.ParseUint(idParam, 10, 32)
+	if err != nil {
+		return helper.Error(c, fiber.StatusBadRequest, "ID sewa tidak valid")
+	}
+
+	rental, err := s.rentalRepo.FindByID(uint(id))
+	if err != nil {
+		return helper.Error(c, fiber.StatusNotFound, "Pengajuan sewa tidak ditemukan")
+	}
+
+	if rental.Status != model.StatusPending {
+		return helper.Error(c, fiber.StatusBadRequest, "Pengajuan sewa harus berstatus pending")
+	}
+
+	if err := s.rentalRepo.RejectTx(rental.ID, getUserID(c)); err != nil {
+		return helper.Error(c, fiber.StatusInternalServerError, "Gagal menolak pengajuan sewa")
+	}
+
+	return helper.Success(c, fiber.StatusOK, "Pengajuan sewa berhasil ditolak", nil)
+}
