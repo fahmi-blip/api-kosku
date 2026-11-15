@@ -111,9 +111,13 @@ func (s *authService) Login(c *fiber.Ctx) error {
 		return helper.Error(c, fiber.StatusUnauthorized, "Email atau password salah")
 	}
 
-	
+	pair, err := s.issueTokenPair(user)
+	if err != nil {
+		return helper.Error(c, fiber.StatusInternalServerError, "Gagal membuat token autentikasi")
+	}
 
 	resp := model.AuthResponse{
+		Token: *pair,
 		User: model.UserResponse{
 			ID:    user.ID,
 			Name:  user.Name,
@@ -124,4 +128,32 @@ func (s *authService) Login(c *fiber.Ctx) error {
 	}
 
 	return helper.Success(c, fiber.StatusOK, "Login berhasil", resp)
+}
+
+func (s *authService) issueTokenPair(user *model.User) (*model.TokenPair, error) {
+	access, err := s.jwtManager.GenerateAccess(*user)
+	if err != nil {
+		return nil, err
+	}
+
+	raw, err := helper.RandomToken(32)
+	if err != nil {
+		return nil, err
+	}
+
+	rt := &model.RefreshToken{
+		UserID:    user.ID,
+		TokenHash: helper.SHA256Hex(raw),
+		ExpiresAt: time.Now().Add(s.refreshTTL),
+	}
+	if err := s.tokenRepo.Create(rt); err != nil {
+		return nil, err
+	}
+
+	return &model.TokenPair{
+		AccessToken:  access,
+		RefreshToken: raw,
+		TokenType:    "Bearer",
+		ExpiresIn:    int(s.jwtManager.AccessTTL().Seconds()),
+	}, nil
 }
