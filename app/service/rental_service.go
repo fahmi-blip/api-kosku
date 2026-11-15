@@ -303,3 +303,27 @@ func (s *rentalService) Reject(c *fiber.Ctx) error {
 
 	return helper.Success(c, fiber.StatusOK, "Pengajuan sewa berhasil ditolak", nil)
 }
+
+func (s *rentalService) Cancel(c *fiber.Ctx) error {
+	if getRole(c) != model.RolePenghuni {
+		return helper.Error(c, fiber.StatusForbidden, "Hanya penghuni yang dapat membatalkan sewa")
+	}
+	id, err := strconv.ParseUint(c.Params("id"), 10, 32)
+	if err != nil || id == 0 {
+		return helper.Error(c, fiber.StatusBadRequest, "ID sewa tidak valid")
+	}
+	rental, err := s.rentalRepo.FindByID(uint(id))
+	if err != nil {
+		return helper.Error(c, fiber.StatusNotFound, "Pengajuan sewa tidak ditemukan")
+	}
+	if rental.UserID != getUserID(c) {
+		return helper.Error(c, fiber.StatusForbidden, "Anda hanya dapat membatalkan sewa sendiri")
+	}
+	if rental.Status != model.StatusPending && rental.Status != model.StatusApproved {
+		return helper.Error(c, fiber.StatusBadRequest, "Sewa hanya dapat dibatalkan saat pending atau approved")
+	}
+	if err := s.rentalRepo.CancelTx(rental.ID, rental.RoomID, getUserID(c)); err != nil {
+		return helper.Error(c, fiber.StatusInternalServerError, "Gagal membatalkan sewa")
+	}
+	return helper.Success(c, fiber.StatusOK, "Sewa berhasil dibatalkan", nil)
+}
