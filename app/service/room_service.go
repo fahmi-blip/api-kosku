@@ -71,3 +71,25 @@ func (s *roomService) GetByID(c *fiber.Ctx) error {
 
 	return helper.Success(c, fiber.StatusOK, "Berhasil mengambil detail kamar", resp)
 }
+
+func (s *roomService) GetAvailable(c *fiber.Ctx) error {
+	rooms, err := s.roomRepo.FindAvailable()
+	if err != nil {
+		return helper.Error(c, fiber.StatusInternalServerError, "Gagal mengambil data kamar yang tersedia")
+	}
+
+	var resp []model.RoomResponse
+	for _, r := range rooms {
+		resp = append(resp, model.RoomResponse{
+			ID:            r.ID,
+			Code:          r.Code,
+			Name:          r.Name,
+			PricePerMonth: r.PricePerMonth,
+			Facilities:    r.Facilities,
+			Status:        r.Status,
+			CreatedAt:     r.CreatedAt,
+		})
+	}
+
+	return helper.Success(c, fiber.StatusOK, "Berhasil mengambil data kamar tersedia", resp)
+}
