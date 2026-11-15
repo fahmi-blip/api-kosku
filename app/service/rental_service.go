@@ -1,0 +1,197 @@
+package service
+
+import (
+	"time"
+
+	"kosku-api/app/model"
+	"kosku-api/app/repository"
+	"kosku-api/helper"
+
+	"github.com/gofiber/fiber/v2"
+)
+
+type RentalService interface {
+	Apply(c *fiber.Ctx) error
+	GetAll(c *fiber.Ctx) error
+	GetLogs(c *fiber.Ctx) error
+	Approve(c *fiber.Ctx) error
+	Reject(c *fiber.Ctx) error
+	Cancel(c *fiber.Ctx) error
+}
+
+type rentalService struct {
+	rentalRepo repository.RentalRepository
+	roomRepo   repository.RoomRepository
+}
+
+
+func getUserID(c *fiber.Ctx) uint {
+	if user, ok := helper.CurrentUser(c); ok {
+		return user.UserID
+	}
+	val := c.Locals("user_id")
+	switch v := val.(type) {
+	case uint:
+		return v
+	case float64:
+		return uint(v)
+	case int:
+		return uint(v)
+	}
+	return 0
+}
+
+func getRole(c *fiber.Ctx) string {
+	if user, ok := helper.CurrentUser(c); ok {
+		return user.Role
+	}
+	val := c.Locals("role")
+	if s, ok := val.(string); ok {
+		return s
+	}
+	return ""
+}
+
+func (s *rentalService) Apply(c *fiber.Ctx) error {
+	role := getRole(c)
+	if role != model.RolePenghuni {
+		return helper.Error(c, fiber.StatusForbidden, "Hanya penghuni yang dapat mengajukan sewa")
+	}
+
+	userID := getUserID(c)
+	if userID == 0 {
+		return helper.Error(c, fiber.StatusUnauthorized, "Pengguna tidak terautentikasi")
+	}
+
+	var req model.RentalRequest
+	if err := c.BodyParser(&req); err != nil {
+		return helper.Error(c, fiber.StatusBadRequest, "Format request tidak valid")
+	}
+
+	if req.RoomID == 0 {
+		return helper.Error(c, fiber.StatusBadRequest, "ID kamar wajib diisi")
+	}
+
+	if req.DurationMonths < 1 {
+		return helper.Error(c, fiber.StatusBadRequest, "Durasi sewa minimal 1 bulan")
+	}
+
+	location, err := time.LoadLocation("Asia/Jakarta")
+	if err != nil {
+		return helper.Error(c, fiber.StatusInternalServerError, "Konfigurasi timezone tidak tersedia")
+	}
+	startDate, err := time.ParseInLocation("2006-01-02", req.StartDate, location)
+	if err != nil {
+		return helper.Error(c, fiber.StatusBadRequest, "Format tanggal mulai harus YYYY-MM-DD")
+	}
+
+	today := time.Now().In(location).Truncate(24 * time.Hour)
+	if startDate.Before(today) {
+		return helper.Error(c, fiber.StatusBadRequest, "Tanggal mulai sewa tidak boleh di masa lalu")
+	}
+
+	room, err := s.roomRepo.FindByID(req.RoomID)
+	if err != nil {
+		return helper.Error(c, fiber.StatusNotFound, "Kamar tidak ditemukan")
+	}
+
+	if room.Status != model.RoomAvailable {
+		return helper.Error(c, fiber.StatusBadRequest, "Kamar tidak tersedia untuk disewa")
+	}
+
+	hasPending, err := s.rentalRepo.ExistsPendingByUserAndRoom(userID, req.RoomID)
+	if err != nil {
+		return helper.Error(c, fiber.StatusInternalServerError, "Gagal memeriksa status pengajuan sewa")
+	}
+	if hasPending {
+		return helper.Error(c, fiber.StatusConflict, "Anda sudah memiliki pengajuan sewa yang berstatus pending untuk kamar ini")
+	}
+
+	rental := model.Rental{
+		UserID:         userID,
+		RoomID:         req.RoomID,
+		StartDate:      startDate,
+		DurationMonths: req.DurationMonths,
+		Status:         model.StatusPending,
+	}
+
+	if err := s.rentalRepo.CreateWithLog(&rental, &model.RentalStatusLog{
+		ActorID:    userID,
+		FromStatus: "",
+		ToStatus:   model.StatusPending,
+		Note:       "Pengajuan sewa dibuat",
+	}); err != nil {
+		return helper.Error(c, fiber.StatusInternalServerError, "Gagal mengajukan sewa kamar")
+	}
+
+	resp := model.RentalResponse{
+		ID:             rental.ID,
+		UserID:         rental.UserID,
+		RoomID:         rental.RoomID,
+		StartDate:      rental.StartDate.Format("2006-01-02"),
+		DurationMonths: rental.DurationMonths,
+		Status:         rental.Status,
+		CreatedAt:      rental.CreatedAt,
+	}
+
+	return helper.Success(c, fiber.StatusCreated, "Pengajuan sewa berhasil dibuat", resp)
+}
+
+func (s *rentalService) GetAll(c *fiber.Ctx) error {
+	role := getRole(c)
+	userID := getUserID(c)
+
+	var rentals []model.Rental
+	var err error
+
+	if role == model.RolePemilik {
+		rentals, err = s.rentalRepo.FindAll()
+	} else if role == model.RolePenghuni {
+		rentals, err = s.rentalRepo.FindByUserID(userID)
+	} else {
+		return helper.Error(c, fiber.StatusForbidden, "Akses ditolak")
+	}
+
+	if err != nil {
+		return helper.Error(c, fiber.StatusInternalServerError, "Gagal mengambil data sewa")
+	}
+
+	var resp []model.RentalResponse
+	for _, item := range rentals {
+		rentalItem := model.RentalResponse{
+			ID:             item.ID,
+			UserID:         item.UserID,
+			RoomID:         item.RoomID,
+			StartDate:      item.StartDate.Format("2006-01-02"),
+			DurationMonths: item.DurationMonths,
+			Status:         item.Status,
+			CreatedAt:      item.CreatedAt,
+		}
+
+		if item.User.ID != 0 {
+			rentalItem.User = &model.UserResponse{
+				ID:    item.User.ID,
+				Name:  item.User.Name,
+				Email: item.User.Email,
+				Phone: item.User.Phone,
+				Role:  item.User.Role,
+			}
+		}
+
+		if item.Room.ID != 0 {
+			rentalItem.Room = &model.RoomResponse{
+				ID:            item.Room.ID,
+				Code:          item.Room.Code,
+				Name:          item.Room.Name,
+				PricePerMonth: item.Room.PricePerMonth,
+				Facilities:    item.Room.Facilities,
+				Status:        item.Room.Status,
+				CreatedAt:     item.Room.CreatedAt,
+			}
+		}
+
+		resp = append(resp, rentalItem)
+	}
+
+	return helper.Success(c, fiber.StatusOK, "Berhasil mengambil data sewa", resp)
+}
