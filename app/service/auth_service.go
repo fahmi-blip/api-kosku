@@ -32,7 +32,14 @@ func NewAuthService(
 	tokenRepo repository.TokenRepository,
 	jwtManager *helper.JWTManager,
 	refreshTTL time.Duration,
-)
+) AuthService {
+	return &authService{
+		userRepo:   userRepo,
+		tokenRepo:  tokenRepo,
+		jwtManager: jwtManager,
+		refreshTTL: refreshTTL,
+	}
+}
 
 func (s *authService) Register(c *fiber.Ctx) error {
 	var req model.RegisterRequest
@@ -165,6 +172,41 @@ func (s *authService) Refresh(c *fiber.Ctx) error {
 	}
 
 	return helper.Success(c, fiber.StatusOK, "Token berhasil diperbarui", pair)
+}
+
+func (s *authService) Logout(c *fiber.Ctx) error {
+	authUser, ok := helper.CurrentUser(c)
+	if !ok || authUser.UserID == 0 {
+		return helper.Error(c, fiber.StatusUnauthorized, "Pengguna tidak terautentikasi")
+	}
+
+	if err := s.tokenRepo.RevokeAllByUser(authUser.UserID); err != nil {
+		return helper.Error(c, fiber.StatusInternalServerError, "Gagal mengakhiri sesi pengguna")
+	}
+
+	return helper.Success(c, fiber.StatusOK, "Logout berhasil", nil)
+}
+
+func (s *authService) Me(c *fiber.Ctx) error {
+	authUser, ok := helper.CurrentUser(c)
+	if !ok {
+		return helper.Error(c, fiber.StatusUnauthorized, "Pengguna tidak terautentikasi")
+	}
+
+	user, err := s.userRepo.FindByID(authUser.UserID)
+	if err != nil {
+		return helper.Error(c, fiber.StatusNotFound, "Data pengguna tidak ditemukan")
+	}
+
+	resp := model.UserResponse{
+		ID:    user.ID,
+		Name:  user.Name,
+		Email: user.Email,
+		Phone: user.Phone,
+		Role:  user.Role,
+	}
+
+	return helper.Success(c, fiber.StatusOK, "Berhasil mengambil profil pengguna", resp)
 }
 
 func (s *authService) issueTokenPair(user *model.User) (*model.TokenPair, error) {
