@@ -1,0 +1,9 @@
+CREATE TABLE IF NOT EXISTS rooms (
+    id BIGSERIAL PRIMARY KEY,
+    code VARCHAR(50) NOT NULL UNIQUE,
+    name VARCHAR(100) NOT NULL,
+    price_per_month DECIMAL(12,2) NOT NULL,
+    facilities TEXT,
+    status VARCHAR(20) NOT NULL DEFAULT 'available',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
