@@ -23,7 +23,9 @@ type roomService struct {
 	roomRepo repository.RoomRepository
 }
 
-
+func NewRoomService(roomRepo repository.RoomRepository) RoomService {
+	return &roomService{roomRepo: roomRepo}
+}
 
 func (s *roomService) GetAll(c *fiber.Ctx) error {
 	rooms, err := s.roomRepo.FindAll()
