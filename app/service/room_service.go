@@ -149,3 +149,70 @@ func (s *roomService) Create(c *fiber.Ctx) error {
 
 	return helper.Success(c, fiber.StatusCreated, "Kamar berhasil dibuat", resp)
 }
+
+func (s *roomService) Update(c *fiber.Ctx) error {
+	idParam := c.Params("id")
+	id, err := strconv.ParseUint(idParam, 10, 32)
+	if err != nil {
+		return helper.Error(c, fiber.StatusBadRequest, "ID kamar tidak valid")
+	}
+
+	room, err := s.roomRepo.FindByID(uint(id))
+	if err != nil {
+		return helper.Error(c, fiber.StatusNotFound, "Kamar tidak ditemukan")
+	}
+
+	var req model.RoomRequest
+	if err := c.BodyParser(&req); err != nil {
+		return helper.Error(c, fiber.StatusBadRequest, "Format request tidak valid")
+	}
+
+	if req.Code == "" {
+		return helper.Error(c, fiber.StatusBadRequest, "Kode kamar tidak boleh kosong")
+	}
+
+	if req.Name == "" {
+		return helper.Error(c, fiber.StatusBadRequest, "Nama kamar tidak boleh kosong")
+	}
+
+	if req.PricePerMonth <= 0 {
+		return helper.Error(c, fiber.StatusBadRequest, "Harga sewa per bulan harus lebih dari 0")
+	}
+
+	if req.Code != room.Code {
+		existing, _ := s.roomRepo.FindByCode(req.Code)
+		if existing != nil && existing.ID != room.ID {
+			return helper.Error(c, fiber.StatusConflict, "Kode kamar sudah digunakan")
+		}
+	}
+
+	status := req.Status
+	if status == "" {
+		status = room.Status
+	}
+	if status != model.RoomAvailable && status != model.RoomOccupied && status != model.RoomMaintenance {
+		return helper.Error(c, fiber.StatusBadRequest, "Status kamar tidak valid")
+	}
+
+	room.Code = req.Code
+	room.Name = req.Name
+	room.PricePerMonth = req.PricePerMonth
+	room.Facilities = req.Facilities
+	room.Status = status
+
+	if err := s.roomRepo.Update(room); err != nil {
+		return helper.Error(c, fiber.StatusInternalServerError, "Gagal memperbarui kamar")
+	}
+
+	resp := model.RoomResponse{
+		ID:            room.ID,
+		Code:          room.Code,
+		Name:          room.Name,
+		PricePerMonth: room.PricePerMonth,
+		Facilities:    room.Facilities,
+		Status:        room.Status,
+		CreatedAt:     room.CreatedAt,
+	}
+
+	return helper.Success(c, fiber.StatusOK, "Kamar berhasil diperbarui", resp)
+}
