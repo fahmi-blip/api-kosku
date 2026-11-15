@@ -93,3 +93,59 @@ func (s *roomService) GetAvailable(c *fiber.Ctx) error {
 
 	return helper.Success(c, fiber.StatusOK, "Berhasil mengambil data kamar tersedia", resp)
 }
+
+func (s *roomService) Create(c *fiber.Ctx) error {
+	var req model.RoomRequest
+	if err := c.BodyParser(&req); err != nil {
+		return helper.Error(c, fiber.StatusBadRequest, "Format request tidak valid")
+	}
+
+	if req.Code == "" {
+		return helper.Error(c, fiber.StatusBadRequest, "Kode kamar wajib diisi")
+	}
+
+	if req.Name == "" {
+		return helper.Error(c, fiber.StatusBadRequest, "Nama kamar wajib diisi")
+	}
+
+	if req.PricePerMonth <= 0 {
+		return helper.Error(c, fiber.StatusBadRequest, "Harga sewa per bulan harus lebih dari 0")
+	}
+
+	existing, _ := s.roomRepo.FindByCode(req.Code)
+	if existing != nil {
+		return helper.Error(c, fiber.StatusConflict, "Kode kamar sudah digunakan")
+	}
+
+	status := req.Status
+	if status == "" {
+		status = model.RoomAvailable
+	}
+	if status != model.RoomAvailable && status != model.RoomOccupied && status != model.RoomMaintenance {
+		return helper.Error(c, fiber.StatusBadRequest, "Status kamar tidak valid")
+	}
+
+	room := model.Room{
+		Code:          req.Code,
+		Name:          req.Name,
+		PricePerMonth: req.PricePerMonth,
+		Facilities:    req.Facilities,
+		Status:        status,
+	}
+
+	if err := s.roomRepo.Create(&room); err != nil {
+		return helper.Error(c, fiber.StatusInternalServerError, "Gagal membuat kamar baru")
+	}
+
+	resp := model.RoomResponse{
+		ID:            room.ID,
+		Code:          room.Code,
+		Name:          room.Name,
+		PricePerMonth: room.PricePerMonth,
+		Facilities:    room.Facilities,
+		Status:        room.Status,
+		CreatedAt:     room.CreatedAt,
+	}
+
+	return helper.Success(c, fiber.StatusCreated, "Kamar berhasil dibuat", resp)
+}
