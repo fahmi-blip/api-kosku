@@ -3,68 +3,47 @@ package database
 import (
 	"context"
 	"fmt"
-	"log"
 	"time"
 
-	"kosku-api/config"
+	"github.com/jackc/pgx/v5/pgxpool"
 
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
-	gormLogger "gorm.io/gorm/logger"
+	"kosku-api/config"
 )
 
-func NewPostgresDB() *gorm.DB {
-	dbHost := config.GetEnv("DB_HOST", "localhost")
-	dbPort := config.GetEnv("DB_PORT", "5432")
-	dbUser := config.GetEnv("DB_USER", "postgres")
-	dbPassword := config.GetEnv("DB_PASSWORD", "postgres")
-	dbName := config.GetEnv("DB_NAME", "kosku_db")
-	sslMode := config.GetEnv("DB_SSLMODE", "disable")
-
+// NewPool membuat connection pool ke PostgreSQL menggunakan pgxpool.
+func NewPool(ctx context.Context) (*pgxpool.Pool, error) {
 	dsn := fmt.Sprintf(
-		"host=%s user=%s password=%s dbname=%s port=%s sslmode=%s TimeZone=Asia/Jakarta",
-		dbHost,
-		dbUser,
-		dbPassword,
-		dbName,
-		dbPort,
-		sslMode,
+		"postgres://%s:%s@%s:%s/%s?sslmode=%s",
+		config.GetEnv("DB_USER", "postgres"),
+		config.GetEnv("DB_PASSWORD", "postgres"),
+		config.GetEnv("DB_HOST", "localhost"),
+		config.GetEnv("DB_PORT", "5432"),
+		config.GetEnv("DB_NAME", "kosku_db"),
+		config.GetEnv("DB_SSLMODE", "disable"),
 	)
 
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
-		Logger: gormLogger.Default.LogMode(gormLogger.Silent),
-	})
+	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
-		log.Fatalf("Gagal terhubung ke database: %v", err)
+		return nil, fmt.Errorf("konfigurasi database tidak valid: %w", err)
 	}
 
-	sqlDB, err := db.DB()
+	cfg.MaxConns = int32(config.GetEnvInt("DB_MAX_CONNS", 10))
+	cfg.MinConns = 2
+	cfg.MaxConnLifetime = time.Hour
+	cfg.MaxConnIdleTime = 30 * time.Minute
+
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
-		log.Fatalf("Gagal mendapatkan sql.DB: %v", err)
+		return nil, fmt.Errorf("gagal membuat pool: %w", err)
 	}
 
-	sqlDB.SetMaxOpenConns(config.GetEnvInt("DB_MAX_CONNS", 10))
-	sqlDB.SetMaxIdleConns(2)
-	sqlDB.SetConnMaxLifetime(time.Hour)
-	sqlDB.SetConnMaxIdleTime(30 * time.Minute)
-
-	pingCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	if err := sqlDB.PingContext(pingCtx); err != nil {
-		sqlDB.Close()
-		log.Fatalf("Gagal ping database PostgreSQL: %v", err)
+	if err := pool.Ping(pingCtx); err != nil {
+		pool.Close()
+		return nil, fmt.Errorf("gagal terhubung ke database: %w", err)
 	}
 
-	if err := RunSQLMigrations(db, "migrations"); err != nil {
-		log.Fatalf("Gagal menjalankan migrasi SQL: %v", err)
-	}
-
-	if err := Migrate(db); err != nil {
-		log.Fatalf("Gagal migrasi database: %v", err)
-	}
-
-	seedOwner(db)
-
-	return db
+	return pool, nil
 }

@@ -1,34 +1,17 @@
 package database
 
 import (
+	"context"
 	"log"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 
-	"kosku-api/app/model"
-
-	"gorm.io/gorm"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func Migrate(db *gorm.DB) error {
-	log.Println("Menjalankan migrasi skema database...")
-	err := db.AutoMigrate(
-		&model.User{},
-		&model.Room{},
-		&model.Rental{},
-		&model.RentalStatusLog{},
-		&model.RefreshToken{},
-	)
-	if err != nil {
-		return err
-	}
-	log.Println("Migrasi skema database selesai")
-	return nil
-}
-
-func RunSQLMigrations(db *gorm.DB, dirPath string) error {
+func RunSQLMigrations(ctx context.Context, pool *pgxpool.Pool, dirPath string) error {
 	if dirPath == "" {
 		if _, err := os.Stat("database/migrations"); err == nil {
 			dirPath = "database/migrations"
@@ -39,14 +22,6 @@ func RunSQLMigrations(db *gorm.DB, dirPath string) error {
 
 	entries, err := os.ReadDir(dirPath)
 	if err != nil {
-		return err
-	}
-	if err := db.Exec(`
-		CREATE TABLE IF NOT EXISTS schema_migrations (
-			version VARCHAR(255) PRIMARY KEY,
-			applied_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
-		)
-	`).Error; err != nil {
 		return err
 	}
 
@@ -60,14 +35,6 @@ func RunSQLMigrations(db *gorm.DB, dirPath string) error {
 	sort.Strings(upFiles)
 
 	for _, fileName := range upFiles {
-		var applied bool
-		if err := db.Raw("SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE version = ?)", fileName).Scan(&applied).Error; err != nil {
-			return err
-		}
-		if applied {
-			continue
-		}
-
 		filePath := filepath.Join(dirPath, fileName)
 		content, err := os.ReadFile(filePath)
 		if err != nil {
@@ -75,12 +42,7 @@ func RunSQLMigrations(db *gorm.DB, dirPath string) error {
 		}
 
 		log.Printf("Mengeksekusi migrasi file: %s", fileName)
-		if err := db.Transaction(func(tx *gorm.DB) error {
-			if err := tx.Exec(string(content)).Error; err != nil {
-				return err
-			}
-			return tx.Exec("INSERT INTO schema_migrations (version) VALUES (?)", fileName).Error
-		}); err != nil {
+		if _, err := pool.Exec(ctx, string(content)); err != nil {
 			return err
 		}
 	}
@@ -89,13 +51,9 @@ func RunSQLMigrations(db *gorm.DB, dirPath string) error {
 	return nil
 }
 
-func DropTables(db *gorm.DB) error {
+func DropTables(ctx context.Context, pool *pgxpool.Pool) error {
 	log.Println("Menghapus tabel database...")
-	return db.Migrator().DropTable(
-		&model.RentalStatusLog{},
-		&model.RefreshToken{},
-		&model.Rental{},
-		&model.Room{},
-		&model.User{},
-	)
+	query := "DROP TABLE IF EXISTS rental_status_logs, refresh_tokens, rentals, rooms, users CASCADE"
+	_, err := pool.Exec(ctx, query)
+	return err
 }

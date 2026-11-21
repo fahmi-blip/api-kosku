@@ -1,25 +1,31 @@
 package database
 
 import (
+	"context"
 	"log"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"kosku-api/app/model"
 	"kosku-api/config"
 	"kosku-api/helper"
-
-	"gorm.io/gorm"
 )
 
-func Connect() *gorm.DB {
-	return NewPostgresDB()
-}
-
-func seedOwner(db *gorm.DB) {
+func SeedOwner(ctx context.Context, pool *pgxpool.Pool) {
 	ownerEmail := config.GetEnv("SEED_OWNER_EMAIL", "pemilik@kosku.com")
 	ownerPassword := config.GetEnv("SEED_OWNER_PASSWORD", "pemilik12345")
 
 	var count int64
-	db.Model(&model.User{}).Where("email = ? OR role = ?", ownerEmail, model.RolePemilik).Count(&count)
+	err := pool.QueryRow(
+		ctx,
+		"SELECT COUNT(*) FROM users WHERE email = $1 OR role = $2",
+		ownerEmail,
+		model.RolePemilik,
+	).Scan(&count)
+	if err != nil {
+		log.Printf("Gagal memeriksa akun pemilik: %v", err)
+		return
+	}
 	if count > 0 {
 		return
 	}
@@ -30,15 +36,12 @@ func seedOwner(db *gorm.DB) {
 		return
 	}
 
-	owner := model.User{
-		Name:         "Pemilik Kos",
-		Email:        ownerEmail,
-		PasswordHash: hash,
-		Phone:        "081234567890",
-		Role:         model.RolePemilik,
-	}
-
-	if err := db.Create(&owner).Error; err != nil {
+	query := `
+		INSERT INTO users (name, email, password_hash, phone, role)
+		VALUES ($1, $2, $3, $4, $5)
+	`
+	_, err = pool.Exec(ctx, query, "Pemilik Kos", ownerEmail, hash, "081234567890", model.RolePemilik)
+	if err != nil {
 		log.Printf("Gagal membuat akun seed pemilik: %v", err)
 		return
 	}
