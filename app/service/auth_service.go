@@ -125,7 +125,7 @@ func (s *authService) Login(c *fiber.Ctx) error {
 
 	pair, err := s.issueTokenPair(ctx, user)
 	if err != nil {
-		return helper.Error(c, fiber.StatusInternalServerError, "Gagal membuat token autentikasi")
+		return helper.Internal(err)
 	}
 
 	resp := model.AuthResponse{
