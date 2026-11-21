@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"net/mail"
 	"strings"
 	"time"
@@ -42,6 +43,8 @@ func NewAuthService(
 }
 
 func (s *authService) Register(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+
 	var req model.RegisterRequest
 	if err := c.BodyParser(&req); err != nil {
 		return helper.Error(c, fiber.StatusBadRequest, "Format request tidak valid")
@@ -63,7 +66,7 @@ func (s *authService) Register(c *fiber.Ctx) error {
 		return helper.Error(c, fiber.StatusBadRequest, "Password minimal 8 karakter")
 	}
 
-	existingUser, _ := s.userRepo.FindByEmail(req.Email)
+	existingUser, _ := s.userRepo.FindByEmail(ctx, req.Email)
 	if existingUser != nil {
 		helper.VerifyDummyPassword(req.Password)
 		return helper.Error(c, fiber.StatusConflict, "Email sudah terdaftar")
@@ -82,7 +85,7 @@ func (s *authService) Register(c *fiber.Ctx) error {
 		Role:         model.RolePenghuni,
 	}
 
-	if err := s.userRepo.Create(&user); err != nil {
+	if err := s.userRepo.Create(ctx, &user); err != nil {
 		return helper.Error(c, fiber.StatusInternalServerError, "Gagal mendaftarkan pengguna")
 	}
 
@@ -98,6 +101,8 @@ func (s *authService) Register(c *fiber.Ctx) error {
 }
 
 func (s *authService) Login(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+
 	var req model.LoginRequest
 	if err := c.BodyParser(&req); err != nil {
 		return helper.Error(c, fiber.StatusBadRequest, "Format request tidak valid")
@@ -108,8 +113,8 @@ func (s *authService) Login(c *fiber.Ctx) error {
 		return helper.Error(c, fiber.StatusBadRequest, "Email dan password wajib diisi")
 	}
 
-	user, err := s.userRepo.FindByEmail(req.Email)
-	if err != nil {
+	user, err := s.userRepo.FindByEmail(ctx, req.Email)
+	if err != nil || user == nil {
 		helper.VerifyDummyPassword(req.Password)
 		return helper.Error(c, fiber.StatusUnauthorized, "Email atau password salah")
 	}
@@ -118,7 +123,7 @@ func (s *authService) Login(c *fiber.Ctx) error {
 		return helper.Error(c, fiber.StatusUnauthorized, "Email atau password salah")
 	}
 
-	pair, err := s.issueTokenPair(user)
+	pair, err := s.issueTokenPair(ctx, user)
 	if err != nil {
 		return helper.Error(c, fiber.StatusInternalServerError, "Gagal membuat token autentikasi")
 	}
@@ -138,6 +143,8 @@ func (s *authService) Login(c *fiber.Ctx) error {
 }
 
 func (s *authService) Refresh(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+
 	var req model.RefreshRequest
 	if err := c.BodyParser(&req); err != nil || strings.TrimSpace(req.RefreshToken) == "" {
 		return helper.Error(c, fiber.StatusBadRequest, "refresh_token wajib diisi")
@@ -145,13 +152,13 @@ func (s *authService) Refresh(c *fiber.Ctx) error {
 
 	hash := helper.SHA256Hex(strings.TrimSpace(req.RefreshToken))
 
-	stored, err := s.tokenRepo.FindByHash(hash)
+	stored, err := s.tokenRepo.FindByHash(ctx, hash)
 	if err != nil || stored == nil {
 		return helper.Error(c, fiber.StatusUnauthorized, "Refresh token tidak valid")
 	}
 
 	if stored.RevokedAt != nil {
-		_ = s.tokenRepo.RevokeAllByUser(stored.UserID)
+		_ = s.tokenRepo.RevokeAllByUser(ctx, stored.UserID)
 		return helper.Error(c, fiber.StatusUnauthorized, "Token sudah dicabut — semua sesi dihentikan")
 	}
 
@@ -159,14 +166,14 @@ func (s *authService) Refresh(c *fiber.Ctx) error {
 		return helper.Error(c, fiber.StatusUnauthorized, "Refresh token kedaluwarsa")
 	}
 
-	_ = s.tokenRepo.RevokeByHash(hash)
+	_ = s.tokenRepo.RevokeByHash(ctx, hash)
 
-	user, err := s.userRepo.FindByID(stored.UserID)
+	user, err := s.userRepo.FindByID(ctx, stored.UserID)
 	if err != nil || user == nil {
 		return helper.Error(c, fiber.StatusUnauthorized, "Pengguna tidak ditemukan")
 	}
 
-	pair, err := s.issueTokenPair(user)
+	pair, err := s.issueTokenPair(ctx, user)
 	if err != nil {
 		return helper.Error(c, fiber.StatusInternalServerError, "Gagal membuat token baru")
 	}
@@ -175,12 +182,14 @@ func (s *authService) Refresh(c *fiber.Ctx) error {
 }
 
 func (s *authService) Logout(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+
 	authUser, ok := helper.CurrentUser(c)
 	if !ok || authUser.UserID == 0 {
 		return helper.Error(c, fiber.StatusUnauthorized, "Pengguna tidak terautentikasi")
 	}
 
-	if err := s.tokenRepo.RevokeAllByUser(authUser.UserID); err != nil {
+	if err := s.tokenRepo.RevokeAllByUser(ctx, authUser.UserID); err != nil {
 		return helper.Error(c, fiber.StatusInternalServerError, "Gagal mengakhiri sesi pengguna")
 	}
 
@@ -188,13 +197,15 @@ func (s *authService) Logout(c *fiber.Ctx) error {
 }
 
 func (s *authService) Me(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+
 	authUser, ok := helper.CurrentUser(c)
 	if !ok {
 		return helper.Error(c, fiber.StatusUnauthorized, "Pengguna tidak terautentikasi")
 	}
 
-	user, err := s.userRepo.FindByID(authUser.UserID)
-	if err != nil {
+	user, err := s.userRepo.FindByID(ctx, authUser.UserID)
+	if err != nil || user == nil {
 		return helper.Error(c, fiber.StatusNotFound, "Data pengguna tidak ditemukan")
 	}
 
@@ -209,7 +220,7 @@ func (s *authService) Me(c *fiber.Ctx) error {
 	return helper.Success(c, fiber.StatusOK, "Berhasil mengambil profil pengguna", resp)
 }
 
-func (s *authService) issueTokenPair(user *model.User) (*model.TokenPair, error) {
+func (s *authService) issueTokenPair(ctx context.Context, user *model.User) (*model.TokenPair, error) {
 	access, err := s.jwtManager.GenerateAccess(*user)
 	if err != nil {
 		return nil, err
@@ -225,7 +236,7 @@ func (s *authService) issueTokenPair(user *model.User) (*model.TokenPair, error)
 		TokenHash: helper.SHA256Hex(raw),
 		ExpiresAt: time.Now().Add(s.refreshTTL),
 	}
-	if err := s.tokenRepo.Create(rt); err != nil {
+	if err := s.tokenRepo.Create(ctx, rt); err != nil {
 		return nil, err
 	}
 

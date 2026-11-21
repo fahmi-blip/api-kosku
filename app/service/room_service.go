@@ -28,7 +28,8 @@ func NewRoomService(roomRepo repository.RoomRepository) RoomService {
 }
 
 func (s *roomService) GetAll(c *fiber.Ctx) error {
-	rooms, err := s.roomRepo.FindAll()
+	ctx := c.UserContext()
+	rooms, err := s.roomRepo.FindAll(ctx)
 	if err != nil {
 		return helper.Error(c, fiber.StatusInternalServerError, "Gagal mengambil data kamar")
 	}
@@ -50,14 +51,15 @@ func (s *roomService) GetAll(c *fiber.Ctx) error {
 }
 
 func (s *roomService) GetByID(c *fiber.Ctx) error {
+	ctx := c.UserContext()
 	idParam := c.Params("id")
 	id, err := strconv.ParseUint(idParam, 10, 32)
 	if err != nil {
 		return helper.Error(c, fiber.StatusBadRequest, "ID kamar tidak valid")
 	}
 
-	room, err := s.roomRepo.FindByID(uint(id))
-	if err != nil {
+	room, err := s.roomRepo.FindByID(ctx, uint(id))
+	if err != nil || room == nil {
 		return helper.Error(c, fiber.StatusNotFound, "Kamar tidak ditemukan")
 	}
 
@@ -75,7 +77,8 @@ func (s *roomService) GetByID(c *fiber.Ctx) error {
 }
 
 func (s *roomService) GetAvailable(c *fiber.Ctx) error {
-	rooms, err := s.roomRepo.FindAvailable()
+	ctx := c.UserContext()
+	rooms, err := s.roomRepo.FindAvailable(ctx)
 	if err != nil {
 		return helper.Error(c, fiber.StatusInternalServerError, "Gagal mengambil data kamar yang tersedia")
 	}
@@ -97,6 +100,7 @@ func (s *roomService) GetAvailable(c *fiber.Ctx) error {
 }
 
 func (s *roomService) Create(c *fiber.Ctx) error {
+	ctx := c.UserContext()
 	var req model.RoomRequest
 	if err := c.BodyParser(&req); err != nil {
 		return helper.Error(c, fiber.StatusBadRequest, "Format request tidak valid")
@@ -114,7 +118,7 @@ func (s *roomService) Create(c *fiber.Ctx) error {
 		return helper.Error(c, fiber.StatusBadRequest, "Harga sewa per bulan harus lebih dari 0")
 	}
 
-	existing, _ := s.roomRepo.FindByCode(req.Code)
+	existing, _ := s.roomRepo.FindByCode(ctx, req.Code)
 	if existing != nil {
 		return helper.Error(c, fiber.StatusConflict, "Kode kamar sudah digunakan")
 	}
@@ -135,7 +139,7 @@ func (s *roomService) Create(c *fiber.Ctx) error {
 		Status:        status,
 	}
 
-	if err := s.roomRepo.Create(&room); err != nil {
+	if err := s.roomRepo.Create(ctx, &room); err != nil {
 		return helper.Error(c, fiber.StatusInternalServerError, "Gagal membuat kamar baru")
 	}
 
@@ -153,14 +157,15 @@ func (s *roomService) Create(c *fiber.Ctx) error {
 }
 
 func (s *roomService) Update(c *fiber.Ctx) error {
+	ctx := c.UserContext()
 	idParam := c.Params("id")
 	id, err := strconv.ParseUint(idParam, 10, 32)
 	if err != nil {
 		return helper.Error(c, fiber.StatusBadRequest, "ID kamar tidak valid")
 	}
 
-	room, err := s.roomRepo.FindByID(uint(id))
-	if err != nil {
+	room, err := s.roomRepo.FindByID(ctx, uint(id))
+	if err != nil || room == nil {
 		return helper.Error(c, fiber.StatusNotFound, "Kamar tidak ditemukan")
 	}
 
@@ -182,7 +187,7 @@ func (s *roomService) Update(c *fiber.Ctx) error {
 	}
 
 	if req.Code != room.Code {
-		existing, _ := s.roomRepo.FindByCode(req.Code)
+		existing, _ := s.roomRepo.FindByCode(ctx, req.Code)
 		if existing != nil && existing.ID != room.ID {
 			return helper.Error(c, fiber.StatusConflict, "Kode kamar sudah digunakan")
 		}
@@ -202,7 +207,7 @@ func (s *roomService) Update(c *fiber.Ctx) error {
 	room.Facilities = req.Facilities
 	room.Status = status
 
-	if err := s.roomRepo.Update(room); err != nil {
+	if err := s.roomRepo.Update(ctx, room); err != nil {
 		return helper.Error(c, fiber.StatusInternalServerError, "Gagal memperbarui kamar")
 	}
 
@@ -220,14 +225,15 @@ func (s *roomService) Update(c *fiber.Ctx) error {
 }
 
 func (s *roomService) Delete(c *fiber.Ctx) error {
+	ctx := c.UserContext()
 	idParam := c.Params("id")
 	id, err := strconv.ParseUint(idParam, 10, 32)
 	if err != nil {
 		return helper.Error(c, fiber.StatusBadRequest, "ID kamar tidak valid")
 	}
 
-	room, err := s.roomRepo.FindByID(uint(id))
-	if err != nil {
+	room, err := s.roomRepo.FindByID(ctx, uint(id))
+	if err != nil || room == nil {
 		return helper.Error(c, fiber.StatusNotFound, "Kamar tidak ditemukan")
 	}
 
@@ -235,7 +241,7 @@ func (s *roomService) Delete(c *fiber.Ctx) error {
 		return helper.Error(c, fiber.StatusBadRequest, "Kamar berstatus occupied tidak boleh dihapus")
 	}
 
-	if err := s.roomRepo.Delete(uint(id)); err != nil {
+	if err := s.roomRepo.Delete(ctx, uint(id)); err != nil {
 		return helper.Error(c, fiber.StatusInternalServerError, "Gagal menghapus kamar")
 	}
 
