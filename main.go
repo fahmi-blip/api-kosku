@@ -28,7 +28,19 @@ func main() {
 		os.Exit(1)
 	}
 
-	db := database.NewPostgresDB()
+	pool, err := database.NewPool(context.Background())
+	if err != nil {
+		logger.Error("Gagal terhubung ke database: %v", err)
+		os.Exit(1)
+	}
+	defer pool.Close()
+
+	if err := database.RunSQLMigrations(context.Background(), pool, "migrations"); err != nil {
+		logger.Error("Gagal menjalankan migrasi SQL: %v", err)
+		os.Exit(1)
+	}
+
+	database.SeedOwner(context.Background(), pool)
 
 	jwtManager := helper.NewJWTManager(
 		jwtSecret,
@@ -39,10 +51,10 @@ func main() {
 
 	perms := helper.DefaultPermissionSet()
 
-	userRepo := repository.NewUserRepository(db)
-	tokenRepo := repository.NewTokenRepository(db)
-	roomRepo := repository.NewRoomRepository(db)
-	rentalRepo := repository.NewRentalRepository(db)
+	userRepo := repository.NewUserRepository(pool)
+	tokenRepo := repository.NewTokenRepository(pool)
+	roomRepo := repository.NewRoomRepository(pool)
+	rentalRepo := repository.NewRentalRepository(pool)
 
 	authService := service.NewAuthService(userRepo, tokenRepo, jwtManager, refreshTTL)
 	roomService := service.NewRoomService(roomRepo)
