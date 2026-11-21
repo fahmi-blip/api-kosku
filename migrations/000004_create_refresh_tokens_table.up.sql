@@ -22,3 +22,4 @@ WHERE created_at IS NULL;
 ALTER TABLE refresh_tokens
     ALTER COLUMN created_at SET DEFAULT CURRENT_TIMESTAMP,
     ALTER COLUMN created_at SET NOT NULL;
+    
